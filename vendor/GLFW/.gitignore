@@ -5,8 +5,6 @@ _ReSharper*
 *.sdf
 *.suo
 *.dir
-*.vcxproj*
-*.sln
 .vs
 CMakeSettings.json
 Win32
@@ -19,7 +17,6 @@ RelWithDebInfo
 
 # Xcode clutter
 GLFW.build
-GLFW.xcodeproj
 
 # macOS clutter
 .DS_Store
