@@ -1,5 +1,13 @@
-# Walnut
+# WalnutApplication
+"24 Food Delivery"
+In developing.
+Application with a simple local SQL database, that can be easily replaced with a real database.
 
+![image](https://github.com/ChazovAlexander/WalnutApplication/assets/106874694/e9a67784-ddab-4eff-a307-1c9043950434)
+![image](https://github.com/ChazovAlexander/WalnutApplication/assets/106874694/348198e3-e533-45b7-8fb7-f4fdf01321d6)
+![image](https://github.com/ChazovAlexander/WalnutApplication/assets/106874694/870d1121-777b-494b-b8e9-4dc0900a164b)
+
+This is a dummy, what a real program can be!
 Walnut is a simple application framework built with Dear ImGui and designed to be used with Vulkan - basically this means you can seemlessly blend real-time Vulkan rendering.
 
 ## Requirements
