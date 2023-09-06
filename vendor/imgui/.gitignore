@@ -60,3 +60,6 @@ bin-int/
  # Files
 Makefile 
 
+# Visual Studio files and folder
+*.sln
+*.vcxproj*

@@ -5,14 +5,23 @@
 #include "Walnut/UI/UI.h"
 #include <iostream>
 #include <sqlite3.h>
+//#include <thread>
 #define IM_CLAMP(V, MN, MX)     ((V) < (MN) ? (MN) : (V) > (MX) ? (MX) : (V))
-static bool load_open = false;
-static bool menu_open = true;
+static bool load_open = true;
+static bool menu_open = false;
 static bool receipt_open = false;
 static bool payment_open = false;
+static bool order_open = false;
+
 static bool animate = false;
 static bool animate_gone = false;
+
 static bool card = false;
+static bool deletecard = false;
+static bool cancelcard = true;
+static bool deleteactive = true;
+static bool addactive = true;
+
 static double sum = 0;
 static int count = 0;
 const char* text = "Connecting to DataBase...";
@@ -42,8 +51,8 @@ std::map<std::string, FoodType> foodTypes = {
 	{"4 Mexican", {"Tacos",8.f, "Pozole",6.f, "Sopaipillas",10.f, "Enchiladas",9.f, "Taco"}},
 	{"5 Vegetarian", {"Vegetarian Meatballs",10.3f, "Falafel",5.f, "Cauliflower Curry",7.5f, "Cauliflower Pizza Crust",10.f, "Vegetables"}},
 	{"6 Salads", {"Greek salad",5.f, "Herring salad",5.f, "Insalata Caprese",5.f, "Chicken salad",5.f, "Salads"}},
-	{"7 Sweets", {"Chocolate Donuts 5pcs",7.5f, "Waffles & Maple syrop 3pcs",10.5f, "Chocolate Croissant 3pcs",10.f, "Apple pie 1pc",5.f, "Sweets"}},
-	{"8 Ice Cream", {"Chocolate",1.75f, "Vanilla",1.25f, "Strawberry",1.5f, "Pistachio",2.3f, "Ice Creams"}},
+	{"7 Sweets", {"Chocolate Donuts",7.5f, "Waffles & Maple syrop",10.5f, "Chocolate Croissant",10.f, "Apple pie",5.f, "Sweets"}},
+	{"8 Ice Cream", {"Chocolate IceCream",1.75f, "Vanilla IceCream",1.25f, "Strawberry IceCream",1.5f, "Pistachio IceCream",2.3f, "Ice Creams IceCream"}},
 	{"9 Drinks", {"Cola 0,5ml",3.00f, "Sprite 0,5ml",2.50f, "Black Tea",1.25f, "Coffe",2.00f, "Drinks"}},
 };
 static void ConnectToSQLServer() {
@@ -64,6 +73,7 @@ static void ConnectToSQLServer() {
 		std::cout << "Clients tables can`t created: " << errorMessage << std::endl;
 		sqlite3_free(errorMessage);
 	}*/
+
 	if (rc == SQLITE_OK) {
 		animate = true;
 	}
@@ -137,6 +147,7 @@ public:
 						rc = sqlite3_bind_text(insertStatement, 2, password, -1, SQLITE_STATIC);
 						rc = sqlite3_bind_text(insertStatement, 3, phone_number, -1, SQLITE_STATIC);
 						rc = sqlite3_step(insertStatement);
+
 						if (rc == SQLITE_DONE) {
 							rc = sqlite3_finalize(insertStatement);
 							rc = sqlite3_exec(db, "COMMIT", 0, 0, 0);
@@ -193,6 +204,7 @@ public:
 				ImGui::Text(text);
 				ConnectToSQLServer();
 			}
+			sqlite3_close(db);
 		}
 		ImGui::End();
 	}
@@ -200,20 +212,18 @@ public:
 	static void ShowAppLayout(bool* p_open){
 		if (ImGui::Begin("Menu", p_open, ImGuiWindowFlags_NoTitleBar))
 		{
-			
-			{
-				ImGui::BeginChild("left pane", ImVec2(300, 0), true);
-				ImGui::Text("Ordering:");
-				ImGui::Separator();
+			ImGui::BeginChild("left pane", ImVec2(300, 0), true);
+			ImGui::Text("Ordering:");
+			ImGui::Separator();
 
-				for (const auto& foodType : foodTypes) {
-					char label[128];
-					snprintf(label, sizeof(label), "%s", foodType.first.c_str());
-					if (ImGui::Selectable(label, selected == foodType.first))
-						selected = foodType.first;
-				}
-				ImGui::EndChild();
+			for (const auto& foodType : foodTypes) {
+				char label[128];
+				snprintf(label, sizeof(label), "%s", foodType.first.c_str());
+				if (ImGui::Selectable(label, selected == foodType.first))
+					selected = foodType.first;
 			}
+			ImGui::EndChild();
+
 			if (foodTypes.find(selected) != foodTypes.end()) {
 				ImGui::SameLine();
 
@@ -295,16 +305,13 @@ public:
 					ImGui::EndTabBar();
 				}
 				ImGui::EndChild();
-				if (ImGui::Button("Revert")) {}
-				ImGui::SameLine();
-				if (ImGui::Button("Save")) {}
 				ImGui::EndGroup();
 			}
 		}
 		ImGui::End();
 	}
 	static bool IsValidCardNumber(const char* cardnumber) {
-		if (cardnumber[0] == '2' || cardnumber[0] == '4' || cardnumber[0] == '5') {
+		if (cardnumber[0] == '2' || cardnumber[0] == '4' || cardnumber[0] == '5' || cardnumber[0] == '3') {
 			int length = 0;
 			for (int i = 0; cardnumber[i]; i++) {
 				if (cardnumber[i] != ' ') {
@@ -325,6 +332,13 @@ public:
 		}
 		// Check if the month and year are within valid ranges
 		return (month >= 1 && month <= 12) && (year >= 0 && year <= 99);
+	}
+	static void ShowOrder(bool* p_open) {
+		if (ImGui::Begin("Order", p_open, ImGuiWindowFlags_NoTitleBar))
+		{
+			
+		}
+		ImGui::End();
 	}
 	static void ShowPayment(bool* p_open) {
 		if (ImGui::Begin("Payment", p_open, ImGuiWindowFlags_NoTitleBar))
@@ -360,79 +374,99 @@ public:
 				}
 			}
 			sqlite3_finalize(selectStatement);
-				if (!existingCards.empty()) {
-					int countcards = 0;
-					for (const auto& cardInfo : existingCards) {
-						countcards++;
-						std::string Childname = cardInfo.first;
-						ImGui::BeginGroup();
-						ImGui::BeginChild(Childname.c_str(), ImVec2(350.0f, 200.0f));
-						if (cardInfo.first[0] == '2' || cardInfo.first[0] == '5') {
-							centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
-							ImGui::SetCursorPosY(centerPos);
-							centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
-							ImGui::SetCursorPosX(centerPos);
-							auto image = Walnut::Application::Get().GetMastercard();
-							ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
-						}
-						else if (cardInfo.first[0] == '4') {
-							centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
-							ImGui::SetCursorPosY(centerPos);
-							centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
-							ImGui::SetCursorPosX(centerPos);
-							auto image = Walnut::Application::Get().GetVisa_card();
-							ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
-						}
-						else if (cardInfo.first[0] == '3') {
-							centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
-							ImGui::SetCursorPosY(centerPos);
-							centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
-							ImGui::SetCursorPosX(centerPos);
-							auto image = Walnut::Application::Get().GetAmericanExpress();
-							ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
-						}
-						ImGui::PushItemWidth(235.0f);
-						centerPos = (ImGui::GetWindowSize().y - 0.f) * 0.50f;
+		
+			if (!existingCards.empty()) {
+				int countcards = 0;
+				for (const auto& cardInfo : existingCards) {
+					countcards++;
+					std::string Childname = cardInfo.first;
+					ImGui::BeginGroup();
+					ImGui::BeginChild(Childname.c_str(), ImVec2(350.0f, 200.0f));
+					if (cardInfo.first[0] == '2' || cardInfo.first[0] == '5') {
+						centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
 						ImGui::SetCursorPosY(centerPos);
-						centerPos = (ImGui::GetWindowSize().x - 270.f) * 0.50f;
+						centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
 						ImGui::SetCursorPosX(centerPos);
-						ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-						ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.6f));
-						old_size = ImGui::GetFont()->Scale;
-						ImGui::GetFont()->Scale += 0.25f;
-						ImGui::PushFont(ImGui::GetFont());
-
-						ImGui::Text(cardInfo.first.c_str());
-
-						ImGui::GetFont()->Scale = old_size;
-						ImGui::PopFont();
-						ImGui::PopStyleColor();
-						ImGui::PopStyleVar();
-						centerPos = (ImGui::GetWindowSize().y + 100.f) * 0.50f;
+						auto image = Walnut::Application::Get().GetMastercard();
+						ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
+					}
+					else if (cardInfo.first[0] == '4') {
+						centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
 						ImGui::SetCursorPosY(centerPos);
-						centerPos = (ImGui::GetWindowSize().x - 150.f) * 0.50f;
+						centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
 						ImGui::SetCursorPosX(centerPos);
-						ImGui::PushItemWidth(70.0f);
-						ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-						ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.6f));
+						auto image = Walnut::Application::Get().GetVisa_card();
+						ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
+					}
+					else if (cardInfo.first[0] == '3') {
+						centerPos = (ImGui::GetWindowSize().y + 50.f) * 0.50f;
+						ImGui::SetCursorPosY(centerPos);
+						centerPos = (ImGui::GetWindowSize().x + 180.f) * 0.50f;
+						ImGui::SetCursorPosX(centerPos);
+						auto image = Walnut::Application::Get().GetAmericanExpress();
+						ImGui::Image(image->GetDescriptorSet(), { 74, 74 });
+					}
+					ImGui::PushItemWidth(235.0f);
+					centerPos = (ImGui::GetWindowSize().y - 0.f) * 0.50f;
+					ImGui::SetCursorPosY(centerPos);
+					centerPos = (ImGui::GetWindowSize().x - 270.f) * 0.50f;
+					ImGui::SetCursorPosX(centerPos);
+					ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+					ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.6f));
+					old_size = ImGui::GetFont()->Scale;
+					ImGui::GetFont()->Scale += 0.25f;
+					ImGui::PushFont(ImGui::GetFont());
 
-						ImGui::Text(cardInfo.second.c_str());
+					ImGui::Text(cardInfo.first.c_str());
 
-						ImGui::PopStyleColor();
-						ImGui::PopStyleVar();
-						ImGui::EndChild(); 
-						ImGui::EndGroup();
-						ImGui::SameLine();
+					ImGui::GetFont()->Scale = old_size;
+					ImGui::PopFont();
+					ImGui::PopStyleColor();
+					ImGui::PopStyleVar();
+					centerPos = (ImGui::GetWindowSize().y + 100.f) * 0.50f;
+					ImGui::SetCursorPosY(centerPos);
+					centerPos = (ImGui::GetWindowSize().x - 150.f) * 0.50f;
+					ImGui::SetCursorPosX(centerPos);
+					ImGui::PushItemWidth(70.0f);
+					ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+					ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.6f));
+
+					ImGui::Text(cardInfo.second.c_str());
+
+					ImGui::PopStyleColor();
+					ImGui::PopStyleVar();
+					ImGui::EndChild(); 
+					ImGui::EndGroup();
+					ImGui::SameLine();
+					if (deletecard) {
 						ImGui::BeginChild(Childname.c_str(), ImVec2(350.0f, 200.0f));
 
 						ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 						ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 						centerPos = (ImGui::GetWindowSize().y - 200.f);
 						ImGui::SetCursorPosY(centerPos);
 						if (ImGui::Button(Childname.c_str(), ImVec2(350.0f, 200.0f))) {
+							const char* deleteQuery = "DELETE FROM Payment WHERE name = ? AND cardnumber = ?";
+							sqlite3_stmt* deleteStatement;
+							const char* name = User;
+							const char* cardNumber = cardInfo.first.c_str(); 
+							rc = sqlite3_prepare_v2(db, deleteQuery, -1, &deleteStatement, 0);
+							rc = sqlite3_bind_text(deleteStatement, 1, name, -1, SQLITE_STATIC);
+							rc = sqlite3_bind_text(deleteStatement, 2, cardNumber, -1, SQLITE_STATIC);
 
+							rc = sqlite3_step(deleteStatement);
+
+							if (rc == SQLITE_DONE) {
+								rc = sqlite3_finalize(deleteStatement);
+								rc = sqlite3_exec(db, "COMMIT", 0, 0, 0);
+								errortext = "Card deleted";
+							}
+							else {
+								rc = sqlite3_exec(db, "ROLLBACK", 0, 0, 0);
+								errortext = "Error deleting card";
+							}
 						}
 						ImGui::PopStyleColor(3);
 						ImGui::PopStyleVar();
@@ -444,18 +478,38 @@ public:
 						else {
 							ImGui::SameLine();
 						}
-						
-						
-						
-						}
+					}
+					else {
+						ImGui::BeginChild(Childname.c_str(), ImVec2(350.0f, 200.0f));
 
-					existingCards.clear();
-				}
-					
+						ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
+						ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+						centerPos = (ImGui::GetWindowSize().y - 200.f);
+						ImGui::SetCursorPosY(centerPos);
+						if (ImGui::Button(Childname.c_str(), ImVec2(350.0f, 200.0f))) {
+							order_open = true;
+							ImGui::SetWindowFocus("Order");
+						}
+						ImGui::PopStyleColor(3);
+						ImGui::PopStyleVar();
+
+						ImGui::EndChild();
+						if (countcards % 2 == 0) {
+							ImGui::Spacing();
+						}
+						else {
+							ImGui::SameLine();
+						}
+					}
+					}
+				existingCards.clear();
+			}
 
 			static char cardnumber[20] = "";
-				static char ExpiryDate[6] = "";
-				static char CVC[4] = "";
+			static char ExpiryDate[6] = "";
+			static char CVC[4] = "";
 			
 			bool realnumber = false;
 			bool realdate = false;
@@ -570,31 +624,56 @@ public:
 				ImGui::EndGroup();
 			}
 			ImGui::Spacing();
-			if (ImGui::Button("Add card")) {
-				card = true;
-				if (card && strlen(cardnumber) == 19 && strlen(ExpiryDate) == 5 && strlen(CVC) == 3 && realnumber && realdate) {
-					const char* insertQuery = "INSERT INTO Payment VALUES (?, ?, ?, ?)";
-					sqlite3_stmt* insertStatement;
-					const char* name = User;
-					rc = sqlite3_prepare_v2(db, insertQuery, -1, &insertStatement, 0);
-					rc = sqlite3_bind_text(insertStatement, 1, name, -1, SQLITE_STATIC);
-					rc = sqlite3_bind_text(insertStatement, 2, cardnumber, -1, SQLITE_STATIC);
-					rc = sqlite3_bind_text(insertStatement, 3, ExpiryDate, -1, SQLITE_STATIC);
-					rc = sqlite3_bind_text(insertStatement, 4, CVC, -1, SQLITE_STATIC);
-					rc = sqlite3_step(insertStatement);
-					if (rc == SQLITE_DONE) {
-						rc = sqlite3_finalize(insertStatement);
-						rc = sqlite3_exec(db, "COMMIT", 0, 0, 0);
-						errortext = "Card added";
-						card = false;
-					}
-					else {
-						rc = sqlite3_exec(db, "ROLLBACK", 0, 0, 0);
-						errortext = "Error";
+			if (addactive) {
+				if (ImGui::Button("Add card")) {
+					addactive = true;
+					card = true;
+					deleteactive = false;
+					deletecard = false;
+					if (card && strlen(cardnumber) == 19 && strlen(ExpiryDate) == 5 && strlen(CVC) == 3 && realnumber && realdate) {
+						const char* insertQuery = "INSERT INTO Payment VALUES (?, ?, ?, ?)";
+						sqlite3_stmt* insertStatement;
+						const char* name = User;
+						rc = sqlite3_prepare_v2(db, insertQuery, -1, &insertStatement, 0);
+						rc = sqlite3_bind_text(insertStatement, 1, name, -1, SQLITE_STATIC);
+						rc = sqlite3_bind_text(insertStatement, 2, cardnumber, -1, SQLITE_STATIC);
+						rc = sqlite3_bind_text(insertStatement, 3, ExpiryDate, -1, SQLITE_STATIC);
+						rc = sqlite3_bind_text(insertStatement, 4, CVC, -1, SQLITE_STATIC);
+						rc = sqlite3_step(insertStatement);
+						if (rc == SQLITE_DONE) {
+							rc = sqlite3_finalize(insertStatement);
+							rc = sqlite3_exec(db, "COMMIT", 0, 0, 0);
+							errortext = "Card added";
+							card = false;
+						}
+						else {
+							rc = sqlite3_exec(db, "ROLLBACK", 0, 0, 0);
+							errortext = "Error";
+						}
 					}
 				}
 			}
+			if(deleteactive){
+				if (ImGui::Button("Delete card")) {
+					deletecard = true;
+				}
+			}
+			if (deletecard ) {
+				if (ImGui::Button("Cancel")) {
+					deletecard = false;
+					
+				}
+			}
+			if (card ) {
+				if (ImGui::Button("Cancel")) {
+					addactive = true;
+					card = false;
+					deletecard = false;
+					deleteactive = true;
+				}
+			}
 			ImGui::Text(errortext);
+			sqlite3_close(db);
 		}
 		ImGui::End();
 	}
@@ -633,22 +712,17 @@ public:
 		ImGui::TextUnformatted(
 			"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
 		);
-		std::vector<std::string> itemsToDelete;
+		static std::vector<int> itemsToDelete;
+		static std::vector<int> countsToDelete;
 		int itemCount;
-		std::string itemName;
 		for (size_t i = 0; i < orderedFoods.size(); i++) {
 			if (orderedFoods[i] != "") {
 				const std::string& orderedFood = orderedFoods[i];
 				const float orderedcost = orderedCost[i];
 
 				auto it = foodCounts.find(orderedFood);
-
-
-
 				if (it != foodCounts.end()) {
 					itemCount = it->second;
-					itemName = it->first;
-
 					auto typeIt = foodTypes.find(selected);
 					if (typeIt != foodTypes.end()) {
 						//const FoodType& foodType = typeIt->second;
@@ -678,8 +752,8 @@ public:
 							centerPos = (ImGui::GetWindowSize().x - 20.f);
 							ImGui::SetCursorPosX(centerPos);
 							if (ImGui::Button(orderedFood.c_str(), ImVec2(20.f, 20.f))) {
-								/*itemsToDelete.push_back(itemName);
-								sum -= (orderedcost)*itemCount;*/
+								itemsToDelete.push_back(i);
+								countsToDelete.push_back(itemCount);
 							}
 							ImGui::PopStyleColor(3);
 							ImGui::PopStyleVar();
@@ -692,19 +766,32 @@ public:
 				}
 			}
 		}
-		/*for (const std::string& item : itemsToDelete) {
-			auto foundItem = std::find(orderedFoods.begin(), orderedFoods.end(), item);
-			if (foundItem != orderedFoods.end()) {
-				int index = std::distance(orderedFoods.begin(), foundItem);
-				sum -= orderedCost[index] * foodCounts[item];
-				orderedFoods.erase(foundItem);
-				foodCounts[item] = 0;
-				orderedCost.erase(orderedCost.begin() + index);
+		for (int i = static_cast<int>(itemsToDelete.size()) - 1; i >= 0; i--) {
+			int indexToDelete = itemsToDelete[i];
+			int countToDelete = countsToDelete[i];
+
+			// Subtract the cost of the deleted item from the total sum
+			sum -= orderedCost[indexToDelete] * countToDelete;
+
+			// Update the foodCounts map by decrementing the count of the deleted item
+			const std::string& deletedItem = orderedFoods[indexToDelete];
+			foodCounts[deletedItem]-= countToDelete;
+
+			// Erase the item and its cost from the vectors if the count reaches 0
+			if (foodCounts[deletedItem] == 0) {
+				foodCounts.erase(deletedItem);
+				orderedFoods.erase(orderedFoods.begin() + indexToDelete);
+				orderedCost.erase(orderedCost.begin() + indexToDelete);
+			}
+			else {
+				// If there are still remaining items of the same type, just erase it from the receipt
+				orderedFoods.erase(orderedFoods.begin() + indexToDelete);
+				orderedCost.erase(orderedCost.begin() + indexToDelete);
 			}
 		}
-
-		itemsToDelete.clear();*/
-
+		// Clear the list of items to delete
+		itemsToDelete.clear();
+		countsToDelete.clear();
 		ImGui::Columns(1);
 		ImGui::Spacing();
 		ImGui::Spacing();
@@ -737,6 +824,8 @@ public:
 		}
 		if (payment_open)
 			ShowPayment(&payment_open);
+		if (order_open)
+			ShowOrder(&order_open);
 			
 		UI_DrawAboutModal();
 	}

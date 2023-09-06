@@ -1,4 +1,4 @@
-with open('7.png', 'rb') as file:
+with open('8.png', 'rb') as file:
     png_data = file.read()
 
 # Convert the binary data to a list of hexadecimal values
